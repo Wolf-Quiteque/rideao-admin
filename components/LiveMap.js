@@ -6,7 +6,7 @@
 // de antes, agora sobre ruas e geografia reais de Luanda.
 
 import { GoogleMap, Marker, Polyline, useJsApiLoader } from "@react-google-maps/api";
-import { Fragment, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { GOOGLE_MAPS_KEY } from "@/lib/config";
 
 const LUANDA_CENTER = { lat: -8.8383, lng: 13.2344 };
@@ -36,6 +36,19 @@ export function LiveMap({ drivers, activeRides, selectedRideId, onSelectRide }) 
     googleMapsApiKey: GOOGLE_MAPS_KEY,
   });
 
+  // Abre centrado em quem está a ver o painel, não sempre no mesmo ponto
+  // fixo de Luanda — cai de volta a Luanda se a localização for recusada
+  // ou indisponível (ex.: staff a aceder de fora de Angola).
+  const [center, setCenter] = useState(LUANDA_CENTER);
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => {},
+      { timeout: 8000 }
+    );
+  }, []);
+
   const onlineDrivers = useMemo(() => drivers.filter((d) => d.is_online), [drivers]);
 
   if (!GOOGLE_MAPS_KEY) {
@@ -57,8 +70,8 @@ export function LiveMap({ drivers, activeRides, selectedRideId, onSelectRide }) 
   return (
     <GoogleMap
       mapContainerStyle={CONTAINER_STYLE}
-      center={LUANDA_CENTER}
-      zoom={12}
+      center={center}
+      zoom={13}
       options={{
         styles: MAP_STYLE,
         disableDefaultUI: true,
