@@ -71,7 +71,7 @@ export function LiveMap({ drivers, activeRides, selectedRideId, onSelectRide }) 
     <GoogleMap
       mapContainerStyle={CONTAINER_STYLE}
       center={center}
-      zoom={15}
+      zoom={12}
       options={{
         styles: MAP_STYLE,
         disableDefaultUI: true,
