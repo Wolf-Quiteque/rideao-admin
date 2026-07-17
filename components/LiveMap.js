@@ -1,68 +1,134 @@
 "use client";
 
-// Mapa de operações ao vivo — SVG próprio com projeção de coordenadas reais
-// de Luanda (sem token Mapbox). Motoristas âmbar rodados pelo heading,
-// recolhas verdes, destinos vermelhos, linha para corridas em curso.
+// Mapa de operações ao vivo — Google Maps real (antes era um SVG próprio
+// desenhado à mão). Motoristas âmbar rodados pelo heading, recolhas verdes,
+// destinos vermelhos, linha para corridas em curso — mesma linguagem visual
+// de antes, agora sobre ruas e geografia reais de Luanda.
 
-const BOUNDS = { minLat: -8.945, maxLat: -8.755, minLng: 13.14, maxLng: 13.325 };
-const W = 1000;
-const H = 700;
+import { GoogleMap, Marker, Polyline, useJsApiLoader } from "@react-google-maps/api";
+import { Fragment, useMemo } from "react";
+import { GOOGLE_MAPS_KEY } from "@/lib/config";
 
-function project(lat, lng) {
-  const x = ((lng - BOUNDS.minLng) / (BOUNDS.maxLng - BOUNDS.minLng)) * W;
-  const y = ((BOUNDS.maxLat - lat) / (BOUNDS.maxLat - BOUNDS.minLat)) * H;
-  return { x, y };
-}
+const LUANDA_CENTER = { lat: -8.8383, lng: 13.2344 };
+
+const CONTAINER_STYLE = { width: "100%", height: "100%" };
+
+// Estilo claro e discreto — combina com o resto do painel (fundo #FAFAFA,
+// superfícies brancas) em vez do estilo escuro usado nas apps móveis.
+const MAP_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#EDEAE0" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#6B7280" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#FFFFFF" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#BFDBF7" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#FFFFFF" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#E5E7EB" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#FFFFFF" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#FFA630" }, { weight: 0.6 }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#E4E0D2" }] },
+  { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative", elementType: "geometry.stroke", stylers: [{ color: "#D1D5DB" }] },
+];
 
 export function LiveMap({ drivers, activeRides, selectedRideId, onSelectRide }) {
-  const onlineDrivers = drivers.filter((d) => d.is_online);
+  const { isLoaded } = useJsApiLoader({
+    id: "rideao-admin-map",
+    googleMapsApiKey: GOOGLE_MAPS_KEY,
+  });
+
+  const onlineDrivers = useMemo(() => drivers.filter((d) => d.is_online), [drivers]);
+
+  if (!GOOGLE_MAPS_KEY) {
+    return (
+      <div className="flex h-full w-full items-center justify-center rounded-xl border border-gray-200 bg-surface-alt text-sm text-gray-400">
+        Falta NEXT_PUBLIC_GOOGLE_MAPS_KEY no .env.local
+      </div>
+    );
+  }
+
+  if (!isLoaded) {
+    return (
+      <div className="flex h-full w-full items-center justify-center rounded-xl border border-gray-200 bg-surface-alt text-sm text-gray-400">
+        A carregar mapa…
+      </div>
+    );
+  }
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="h-full w-full rounded-xl border border-gray-200 bg-[#EDEAE0]"
-      role="img"
-      aria-label="Mapa de operações de Luanda"
+    <GoogleMap
+      mapContainerStyle={CONTAINER_STYLE}
+      center={LUANDA_CENTER}
+      zoom={12}
+      options={{
+        styles: MAP_STYLE,
+        disableDefaultUI: true,
+        zoomControl: true,
+        clickableIcons: false,
+      }}
     >
-      {/* baía de Luanda (noroeste) */}
-      <path d={`M 0 0 L ${W * 0.34} 0 Q ${W * 0.2} ${H * 0.18} ${W * 0.05} ${H * 0.3} L 0 ${H * 0.32} Z`} fill="#BFDBF7" />
-      <path d={`M ${W * 0.34} 0 Q ${W * 0.42} ${H * 0.09} ${W * 0.36} ${H * 0.16}`} fill="none" stroke="#BFDBF7" strokeWidth="14" />
-
-      {/* malha urbana decorativa */}
-      {[0.14, 0.28, 0.42, 0.56, 0.7, 0.84].map((t, i) => (
-        <line key={`h${i}`} x1="0" y1={H * t} x2={W} y2={H * t} stroke="#FFFFFF" strokeWidth={i % 2 ? 3 : 6} opacity="0.8" />
-      ))}
-      {[0.12, 0.26, 0.4, 0.54, 0.68, 0.82, 0.94].map((t, i) => (
-        <line key={`v${i}`} x1={W * t} y1="0" x2={W * t} y2={H} stroke="#FFFFFF" strokeWidth={i % 2 ? 3 : 6} opacity="0.8" />
-      ))}
-      <line x1="0" y1={H * 0.35} x2={W} y2={H * 0.62} stroke="#FFFFFF" strokeWidth="8" opacity="0.9" />
-
-      {/* corridas ativas: linha recolha→destino + pontos */}
       {activeRides.map((r) => {
-        const p = project(r.pickup_lat, r.pickup_lng);
-        const d = project(r.dropoff_lat, r.dropoff_lng);
         const selected = r.id === selectedRideId;
+        const pickup = { lat: r.pickup_lat, lng: r.pickup_lng };
+        const dropoff = { lat: r.dropoff_lat, lng: r.dropoff_lng };
         return (
-          <g key={r.id} onClick={() => onSelectRide && onSelectRide(r)} className="cursor-pointer">
+          <Fragment key={r.id}>
             {r.status === "in_progress" && (
-              <line x1={p.x} y1={p.y} x2={d.x} y2={d.y} stroke="#1A1A2E" strokeWidth={selected ? 5 : 3} strokeDasharray="10 7" opacity="0.55" />
+              <Polyline
+                path={[pickup, dropoff]}
+                options={{
+                  strokeColor: "#1A1A2E",
+                  strokeOpacity: 0.55,
+                  strokeWeight: selected ? 4 : 2.5,
+                }}
+              />
             )}
-            <circle cx={p.x} cy={p.y} r={selected ? 13 : 9} fill="#16C79A" stroke="#FFFFFF" strokeWidth="3" />
-            <circle cx={d.x} cy={d.y} r={selected ? 13 : 9} fill="#E63946" stroke="#FFFFFF" strokeWidth="3" />
-          </g>
+            <Marker
+              position={pickup}
+              onClick={() => onSelectRide && onSelectRide(r)}
+              icon={{
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: selected ? 9 : 7,
+                fillColor: "#16C79A",
+                fillOpacity: 1,
+                strokeColor: "#FFFFFF",
+                strokeWeight: 2.5,
+              }}
+              zIndex={selected ? 20 : 5}
+            />
+            <Marker
+              position={dropoff}
+              onClick={() => onSelectRide && onSelectRide(r)}
+              icon={{
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: selected ? 9 : 7,
+                fillColor: "#E63946",
+                fillOpacity: 1,
+                strokeColor: "#FFFFFF",
+                strokeWeight: 2.5,
+              }}
+              zIndex={selected ? 20 : 5}
+            />
+          </Fragment>
         );
       })}
 
-      {/* motoristas online (âmbar, rodados pelo heading) */}
-      {onlineDrivers.map((drv) => {
-        const p = project(drv.current_lat, drv.current_lng);
-        return (
-          <g key={drv.id} transform={`translate(${p.x} ${p.y}) rotate(${drv.heading || 0})`}>
-            <circle r="14" fill="#FFA630" stroke="#FFFFFF" strokeWidth="3.5" />
-            <path d="M 0 -7 L 5 5 L 0 2 L -5 5 Z" fill="#1A1A2E" />
-          </g>
-        );
-      })}
-    </svg>
+      {onlineDrivers.map((drv) => (
+        <Marker
+          key={drv.id}
+          position={{ lat: drv.current_lat, lng: drv.current_lng }}
+          icon={{
+            path: "M 0 -8 L 6 6 L 0 3 L -6 6 Z",
+            rotation: drv.heading || 0,
+            scale: 1.6,
+            fillColor: "#FFA630",
+            fillOpacity: 1,
+            strokeColor: "#FFFFFF",
+            strokeWeight: 2,
+            anchor: new window.google.maps.Point(0, 0),
+          }}
+          zIndex={10}
+        />
+      ))}
+    </GoogleMap>
   );
 }
