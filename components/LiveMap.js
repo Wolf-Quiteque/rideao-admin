@@ -45,7 +45,7 @@ export function LiveMap({ drivers, activeRides, selectedRideId, onSelectRide }) 
     navigator.geolocation.getCurrentPosition(
       (pos) => setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
       () => {},
-      { timeout: 8000 }
+      { timeout: 8000, enableHighAccuracy: true }
     );
   }, []);
 
@@ -71,7 +71,7 @@ export function LiveMap({ drivers, activeRides, selectedRideId, onSelectRide }) 
     <GoogleMap
       mapContainerStyle={CONTAINER_STYLE}
       center={center}
-      zoom={13}
+      zoom={15}
       options={{
         styles: MAP_STYLE,
         disableDefaultUI: true,
